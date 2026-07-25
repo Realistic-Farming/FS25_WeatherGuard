@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<modDesc descVersion="92">
+    <author>TisonK</author>
+    <version>1.0.0.0</version>
+    <modName>FS25_WeatherGuard</modName>
+
+    <title>
+        <en><![CDATA[Realistic Farming - Weather Guard]]></en>
+        <de><![CDATA[Realistic Farming - Weather Guard]]></de>
+        <fr><![CDATA[Realistic Farming - Weather Guard]]></fr>
+        <nl><![CDATA[Realistic Farming - Weather Guard]]></nl>
+        <it><![CDATA[Realistic Farming - Weather Guard]]></it>
+        <pl><![CDATA[Realistic Farming - Weather Guard]]></pl>
+        <es><![CDATA[Realistic Farming - Weather Guard]]></es>
+        <ea><![CDATA[Realistic Farming - Weather Guard]]></ea>
+        <pt><![CDATA[Realistic Farming - Weather Guard]]></pt>
+        <br><![CDATA[Realistic Farming - Weather Guard]]></br>
+        <ru><![CDATA[Realistic Farming - Weather Guard]]></ru>
+        <uk><![CDATA[Realistic Farming - Weather Guard]]></uk>
+        <cz><![CDATA[Realistic Farming - Weather Guard]]></cz>
+        <hu><![CDATA[Realistic Farming - Weather Guard]]></hu>
+        <ro><![CDATA[Realistic Farming - Weather Guard]]></ro>
+        <tr><![CDATA[Realistic Farming - Weather Guard]]></tr>
+        <fi><![CDATA[Realistic Farming - Weather Guard]]></fi>
+        <no><![CDATA[Realistic Farming - Weather Guard]]></no>
+        <sv><![CDATA[Realistic Farming - Weather Guard]]></sv>
+        <da><![CDATA[Realistic Farming - Weather Guard]]></da>
+        <kr><![CDATA[Realistic Farming - Weather Guard]]></kr>
+        <jp><![CDATA[Realistic Farming - Weather Guard]]></jp>
+        <ct><![CDATA[Realistic Farming - Weather Guard]]></ct>
+        <fc><![CDATA[Realistic Farming - Weather Guard]]></fc>
+        <id><![CDATA[Realistic Farming - Weather Guard]]></id>
+        <vi><![CDATA[Realistic Farming - Weather Guard]]></vi>
+    </title>
+
+    <description>
+        <en><![CDATA[Required library for the Realistic Farming mod ecosystem. Gives every weather-aware mod one shared reading of the sky, so the crop stress, the soil, the tablet and the hired workers all agree on what the weather is doing instead of each guessing on their own. It publishes the weather; it never changes it and never decides what another mod does about it. One admin setting for the world climate. Install it and let it run.]]></en>
+        <de><![CDATA[Erforderliche Bibliothek für das Realistic Farming Mod-Ökosystem. Gibt jedem wetterabhängigen Mod eine gemeinsame Lesart des Himmels, damit Pflanzenstress, Boden, Tablet und Landarbeiter sich einig sind, was das Wetter tut, statt jeder für sich zu raten. Sie veröffentlicht das Wetter; sie ändert es nie und entscheidet nie, was ein anderer Mod damit macht. Eine Admin-Einstellung für das Weltklima.]]></de>
+        <fr><![CDATA[Bibliothèque requise pour l'écosystème de mods Realistic Farming. Donne à chaque mod sensible à la météo une lecture partagée du ciel, afin que le stress des cultures, le sol, la tablette et les ouvriers s'accordent sur ce que fait la météo au lieu de deviner chacun de son côté. Elle publie la météo ; elle ne la modifie jamais et ne décide jamais de ce qu'un autre mod en fait. Un réglage admin pour le climat du monde.]]></fr>
+        <nl><![CDATA[Vereiste bibliotheek voor het Realistic Farming mod-ecosysteem. Geeft elke weerafhankelijke mod één gedeelde lezing van de lucht, zodat gewasstress, bodem, tablet en ingehuurde werkers het eens zijn over wat het weer doet in plaats van elk apart te gokken. Het publiceert het weer; het verandert het nooit en beslist nooit wat een andere mod ermee doet. Eén beheerdersinstelling voor het wereldklimaat.]]></nl>
+        <it><![CDATA[Libreria richiesta per l'ecosistema di mod Realistic Farming. Dà a ogni mod sensibile al meteo un'unica lettura condivisa del cielo, così che stress delle colture, suolo, tablet e braccianti concordino su cosa sta facendo il tempo invece di indovinare ciascuno per conto proprio. Pubblica il meteo; non lo cambia mai e non decide mai cosa ne fa un altro mod. Una impostazione admin per il clima del mondo.]]></it>
+        <pl><![CDATA[Wymagana biblioteka dla ekosystemu modów Realistic Farming. Daje każdemu modowi zależnemu od pogody jeden wspólny odczyt nieba, aby stres roślin, gleba, tablet i najęci pracownicy zgadzali się co do pogody, zamiast każdy zgadywać osobno. Publikuje pogodę; nigdy jej nie zmienia i nigdy nie decyduje, co robi z nią inny mod. Jedno ustawienie administratora dla klimatu świata.]]></pl>
+        <es><![CDATA[Biblioteca requerida para el ecosistema de mods Realistic Farming. Da a cada mod sensible al clima una única lectura compartida del cielo, para que el estrés de los cultivos, el suelo, la tableta y los trabajadores coincidan en lo que hace el tiempo en lugar de adivinar cada uno por su cuenta. Publica el tiempo; nunca lo cambia ni decide qué hace otro mod con él. Un ajuste de administrador para el clima del mundo.]]></es>
+        <ea><![CDATA[Biblioteca requerida para el ecosistema de mods Realistic Farming. Da a cada mod sensible al clima una única lectura compartida del cielo, para que el estrés de los cultivos, el suelo, la tableta y los trabajadores coincidan en lo que hace el tiempo en lugar de adivinar cada uno por su cuenta. Publica el tiempo; nunca lo cambia ni decide qué hace otro mod con él. Un ajuste de administrador para el clima del mundo.]]></ea>
+        <pt><![CDATA[Biblioteca necessária para o ecossistema de mods Realistic Farming. Dá a cada mod sensível ao clima uma única leitura partilhada do céu, para que o stress das culturas, o solo, o tablet e os trabalhadores concordem sobre o que o tempo está a fazer em vez de cada um adivinhar por si. Publica o tempo; nunca o altera nem decide o que outro mod faz com ele. Uma definição de administrador para o clima do mundo.]]></pt>
+        <br><![CDATA[Biblioteca necessária para o ecossistema de mods Realistic Farming. Dá a cada mod sensível ao clima uma única leitura compartilhada do céu, para que o estresse das culturas, o solo, o tablet e os trabalhadores concordem sobre o que o tempo está fazendo em vez de cada um adivinhar sozinho. Ela publica o tempo; nunca o altera nem decide o que outro mod faz com ele. Uma configuração de administrador para o clima do mundo.]]></br>
+        <ru><![CDATA[Необходимая библиотека для экосистемы модов Realistic Farming. Даёт каждому зависящему от погоды моду одно общее прочтение неба, чтобы стресс культур, почва, планшет и наёмные работники сходились в том, что делает погода, вместо того чтобы каждый гадал сам. Она публикует погоду; она никогда её не меняет и не решает, что с ней делает другой мод. Одна админ-настройка климата мира.]]></ru>
+        <uk><![CDATA[Необхідна бібліотека для екосистеми модів Realistic Farming. Дає кожному залежному від погоди моду одне спільне прочитання неба, щоб стрес культур, ґрунт, планшет і наймані працівники сходилися в тому, що робить погода, замість того щоб кожен гадав сам. Вона публікує погоду; вона ніколи її не змінює і не вирішує, що з нею робить інший мод. Одне адмін-налаштування клімату світу.]]></uk>
+        <cz><![CDATA[Vyžadovaná knihovna pro ekosystém modů Realistic Farming. Dává každému modu závislému na počasí jedno sdílené čtení oblohy, takže stres plodin, půda, tablet i najatí pracovníci se shodnou na tom, co počasí dělá, místo aby každý hádal sám. Počasí zveřejňuje; nikdy ho nemění a nikdy nerozhoduje, co s ním jiný mod udělá. Jedno nastavení správce pro klima světa.]]></cz>
+        <hu><![CDATA[Szükséges könyvtár a Realistic Farming mod-ökoszisztémához. Minden időjárásfüggő modnak egyetlen közös égbolt-olvasatot ad, így a növénystressz, a talaj, a tablet és a bérelt munkások egyetértenek abban, mit csinál az időjárás, ahelyett hogy mindegyik külön találgatna. Közzéteszi az időjárást; soha nem változtatja meg, és soha nem dönti el, mit kezd vele egy másik mod. Egy adminbeállítás a világ éghajlatához.]]></hu>
+        <ro><![CDATA[Bibliotecă necesară pentru ecosistemul de moduri Realistic Farming. Oferă fiecărui mod dependent de vreme o singură citire comună a cerului, astfel încât stresul culturilor, solul, tableta și muncitorii angajați să fie de acord cu ce face vremea, în loc să ghicească fiecare separat. Publică vremea; nu o schimbă niciodată și nu decide niciodată ce face alt mod cu ea. O setare de administrator pentru clima lumii.]]></ro>
+        <tr><![CDATA[Realistic Farming mod ekosistemi için gerekli kütüphane. Hava durumuna duyarlı her moda gökyüzünün tek bir ortak okumasını verir; böylece ürün stresi, toprak, tablet ve işçiler havanın ne yaptığı konusunda her biri ayrı tahmin yürütmek yerine hemfikir olur. Havayı yayınlar; onu asla değiştirmez ve başka bir modun onunla ne yapacağına asla karar vermez. Dünya iklimi için tek bir yönetici ayarı.]]></tr>
+        <fi><![CDATA[Realistic Farming -modiekosysteemin vaatima kirjasto. Antaa jokaiselle säästä riippuvalle modille yhden jaetun luennan taivaasta, jotta kasvistressi, maaperä, tabletti ja palkatut työntekijät ovat yhtä mieltä siitä, mitä sää tekee, sen sijaan että kukin arvaisi erikseen. Se julkaisee sään; se ei koskaan muuta sitä eikä päätä, mitä toinen modi tekee sillä. Yksi ylläpitäjän asetus maailman ilmastolle.]]></fi>
+        <no><![CDATA[Nødvendig bibliotek for Realistic Farming-modøkosystemet. Gir hver værfølsom mod én delt lesning av himmelen, slik at avlingsstress, jord, nettbrett og innleide arbeidere er enige om hva været gjør i stedet for at hver gjetter for seg. Den publiserer været; den endrer det aldri og bestemmer aldri hva en annen mod gjør med det. Én administratorinnstilling for verdensklimaet.]]></no>
+        <sv><![CDATA[Obligatoriskt bibliotek för Realistic Farming-modekosystemet. Ger varje väderkänslig mod en enda delad läsning av himlen, så att grödstress, jord, surfplatta och inhyrda arbetare är överens om vad vädret gör i stället för att var och en gissar för sig. Den publicerar vädret; den ändrar det aldrig och bestämmer aldrig vad en annan mod gör med det. En administratörsinställning för världsklimatet.]]></sv>
+        <da><![CDATA[Påkrævet bibliotek til Realistic Farming-mod-økosystemet. Giver hver vejrafhængig mod én delt aflæsning af himlen, så afgrødestress, jord, tablet og lejede arbejdere er enige om, hvad vejret gør, i stedet for at hver gætter for sig. Den offentliggør vejret; den ændrer det aldrig og bestemmer aldrig, hvad en anden mod gør ved det. Én administratorindstilling for verdensklimaet.]]></da>
+        <kr><![CDATA[Realistic Farming 모드 생태계에 필요한 라이브러리입니다. 날씨에 반응하는 모든 모드에 하늘에 대한 하나의 공유된 판독값을 제공하여, 작물 스트레스, 토양, 태블릿, 고용 노동자가 각자 추측하는 대신 날씨가 무엇을 하는지에 대해 일치하도록 합니다. 날씨를 게시할 뿐, 결코 바꾸지 않으며 다른 모드가 그것으로 무엇을 할지 결정하지 않습니다. 세계 기후를 위한 관리자 설정 하나.]]></kr>
+        <jp><![CDATA[Realistic Farming モッドエコシステムに必要なライブラリです。天候に反応するすべてのモッドに空の共有された読み取り値を1つ提供し、作物ストレス・土壌・タブレット・雇用労働者がそれぞれ別々に推測するのではなく、天候の状態について一致するようにします。天候を公開するだけで、決して変更せず、他のモッドがそれをどう扱うかも決めません。世界の気候用の管理者設定が1つ。]]></jp>
+        <ct><![CDATA[Realistic Farming 模組生態系所需的函式庫。為每個受天氣影響的模組提供單一共用的天空讀數，讓作物壓力、土壤、平板與雇工對天氣的判斷一致，而不是各自猜測。它只發布天氣，從不更改天氣，也從不決定其他模組要如何處理。一個管理員設定用於世界氣候。]]></ct>
+        <fc><![CDATA[Realistic Farming 模组生态系统所需的库。为每个受天气影响的模组提供单一共享的天空读数，让作物压力、土壤、平板与雇工对天气的判断一致，而不是各自猜测。它只发布天气，从不更改天气，也从不决定其他模组要如何处理。一个管理员设置用于世界气候。]]></fc>
+        <id><![CDATA[Pustaka yang diperlukan untuk ekosistem mod Realistic Farming. Memberi setiap mod yang peka cuaca satu pembacaan langit bersama, sehingga stres tanaman, tanah, tablet, dan pekerja upahan sepakat tentang apa yang sedang dilakukan cuaca alih-alih menebak sendiri-sendiri. Ia menerbitkan cuaca; ia tidak pernah mengubahnya dan tidak pernah memutuskan apa yang dilakukan mod lain terhadapnya. Satu pengaturan admin untuk iklim dunia.]]></id>
+        <vi><![CDATA[Thư viện bắt buộc cho hệ sinh thái mod Realistic Farming. Cung cấp cho mọi mod phụ thuộc thời tiết một cách đọc bầu trời dùng chung, để căng thẳng cây trồng, đất, máy tính bảng và công nhân thuê đều thống nhất về những gì thời tiết đang làm thay vì mỗi bên tự đoán. Nó công bố thời tiết; nó không bao giờ thay đổi thời tiết và không quyết định mod khác làm gì với nó. Một thiết lập quản trị cho khí hậu thế giới.]]></vi>
+    </description>
+
+    <iconFilename>icon.dds</iconFilename>
+
+    <multiplayer supported="true"/>
+
+    <extraSourceFiles>
+        <sourceFile filename="main.lua" />
+    </extraSourceFiles>
+</modDesc>
