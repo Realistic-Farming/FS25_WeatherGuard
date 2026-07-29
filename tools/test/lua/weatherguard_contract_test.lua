@@ -586,17 +586,15 @@ do
   T.eq("fence: no getter wrote anything into the engine state", snapshot(env), before)
 end
 
--- The forbidden surface: the later features must stay ABSENT so a consumer falls
--- back instead of trusting a stub (delivery discipline 1).
+-- The published surface (WG-4 drought outlook is now built).
 do
   local wg = newGuard()
-  T.isNil("surface: getDroughtOutlook is deliberately absent", wg.getDroughtOutlook)
-  T.isNil("surface: isDrySpell is deliberately absent", wg.isDrySpell)
 
-  --   And the published seven are all really here.
-  for _, name in ipairs({ "getClimate", "getCurrentSky", "getEffectiveRain",
-                          "getForecastRain", "getForecastTemperature",
-                          "getWeatherMode", "getContext" }) do
+  -- The nine published functions are all really here.
+  for _, name in ipairs({ "getClimate", "getCurrentSky", "getDroughtOutlook",
+                          "getEffectiveRain", "getForecastRain",
+                          "getForecastTemperature", "getWeatherMode",
+                          "getContext", "isDrySpell" }) do
     T.eq("surface: " .. name .. " is published", type(wg[name]), "function")
   end
 end

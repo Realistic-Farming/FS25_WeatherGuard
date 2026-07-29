@@ -68,5 +68,6 @@
 
     <extraSourceFiles>
         <sourceFile filename="main.lua" />
+        <sourceFile filename="src/weather/DroughtScanner.lua" />
     </extraSourceFiles>
 </modDesc>

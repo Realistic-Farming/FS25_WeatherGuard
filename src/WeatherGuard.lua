@@ -34,6 +34,9 @@
 --      as humidityDefaulted.
 -- =========================================================
 
+source = source or function() end
+source("src/weather/DroughtScanner.lua")
+
 WeatherGuard = {}
 local WeatherGuard_mt = Class(WeatherGuard)
 
@@ -346,6 +349,22 @@ function WeatherGuard:getClimate(season)
         meanTemp        = WeatherGuard.SEASON_TEMP[s],
         biasDefaulted   = mode == WeatherGuard.MODE_NORMAL and not self.modeRestored,
     }
+end
+
+--- Drought/dry-stretch outlook.
+---@return table { isDrySpell, severity, dryDays, source }
+function WeatherGuard:getDroughtOutlook()
+    if self._droughtScanner == nil then
+        self._droughtScanner = DroughtScanner(self)
+    end
+    return self._droughtScanner:scan()
+end
+
+--- Convenience wrapper.
+---@return boolean
+function WeatherGuard:isDrySpell()
+    local o = self:getDroughtOutlook()
+    return o ~= nil and o.isDrySpell == true
 end
 
 -- =========================================================
