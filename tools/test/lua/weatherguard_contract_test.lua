@@ -8,7 +8,7 @@
 --   * the read-only fence (TRUTH never CONSEQUENCE: no getter writes the engine)
 -- plus the routing the certification turned up: forecastItems first with a
 -- dataForTime fallback, and two paths to a forward rain scale.
---!load: src/Logger.lua, src/WeatherGuard.lua
+--!load: src/Logger.lua, src/WeatherGuard.lua, src/weather/DroughtScanner.lua
 
 local DAY_MS = 24 * 60 * 60 * 1000
 local NOON   = 12 * 60 * 60 * 1000
@@ -597,6 +597,41 @@ do
                           "getContext", "isDrySpell" }) do
     T.eq("surface: " .. name .. " is published", type(wg[name]), "function")
   end
+end
+
+-- WG-4 DROUGHT OUTLOOK: the method is CALLED, not merely counted.
+--
+-- The block above asserts these nine names exist, and that is all it ever did. It
+-- passed for the entire life of a feature that could not run: DroughtScanner was
+-- loaded by a bare relative `source("src/weather/DroughtScanner.lua")` the engine
+-- cannot resolve, guarded by a `source = source or function() end` stub that kept the
+-- offline suite quiet, and the constructor was called as `DroughtScanner(self)` on a
+-- plain table with no __call. Three faults stacked, in a feature with a green test.
+--
+-- Existence is not behaviour. These call it.
+do
+  T.eq("the DroughtScanner module is actually loaded", type(DroughtScanner), "table")
+  T.eq("and it constructs with .new, not by calling the table",
+       type(DroughtScanner.new), "function")
+
+  local wg = newGuard()
+
+  -- Neutral when absent: no mission, no environment, so the scan must REFUSE with a
+  -- shaped answer rather than raise or invent a dry spell.
+  clearWorld()
+  local outlook = wg:getDroughtOutlook()
+  T.eq("getDroughtOutlook returns a table with no world at all", type(outlook), "table")
+  T.eq("and reports no dry spell rather than guessing one", outlook.isDrySpell, false)
+  T.eq("with zero severity", outlook.severity, 0)
+  T.eq("and zero dry days", outlook.dryDays, 0)
+
+  T.eq("isDrySpell rides it and answers false", wg:isDrySpell(), false)
+
+  -- The scanner is built once and reused, not rebuilt per call.
+  local first = wg._droughtScanner
+  wg:getDroughtOutlook()
+  T.ok("the scanner instance is cached", wg._droughtScanner == first)
+  T.ok("and it is a real instance, not the class table", first ~= DroughtScanner)
 end
 
 -- ══════════════════════════════════════════════════════════

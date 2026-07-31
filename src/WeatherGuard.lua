@@ -34,8 +34,12 @@
 --      as humidityDefaulted.
 -- =========================================================
 
-source = source or function() end
-source("src/weather/DroughtScanner.lua")
+-- DroughtScanner is sourced by main.lua with g_currentModDirectory, like every other
+-- module in this mod. It used to be pulled in from here with a BARE RELATIVE PATH,
+-- `source("src/weather/DroughtScanner.lua")`, which the engine cannot resolve: that is
+-- the `Can't load resource` line this mod has been printing on every load. The
+-- `source = source or function() end` guard above it was a test accommodation that had
+-- leaked into shipping code, and it is what stopped the offline suite noticing.
 
 WeatherGuard = {}
 local WeatherGuard_mt = Class(WeatherGuard)
@@ -355,7 +359,16 @@ end
 ---@return table { isDrySpell, severity, dryDays, source }
 function WeatherGuard:getDroughtOutlook()
     if self._droughtScanner == nil then
-        self._droughtScanner = DroughtScanner(self)
+        -- DroughtScanner.new, NOT DroughtScanner(). The class is a plain table with no
+        -- __call metamethod, so calling it raises "attempt to call a table value". This
+        -- was never caught because the only test on this method asserted that it
+        -- EXISTS and never invoked it, and because the module it needs was failing to
+        -- load anyway, so the call site was unreachable in game.
+        if DroughtScanner == nil then
+            WGLogger.warning("getDroughtOutlook: DroughtScanner module is not loaded; no outlook available")
+            return nil
+        end
+        self._droughtScanner = DroughtScanner.new(self)
     end
     return self._droughtScanner:scan()
 end
