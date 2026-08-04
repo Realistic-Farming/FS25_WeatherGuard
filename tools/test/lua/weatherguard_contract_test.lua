@@ -8,7 +8,7 @@
 --   * the read-only fence (TRUTH never CONSEQUENCE: no getter writes the engine)
 -- plus the routing the certification turned up: forecastItems first with a
 -- dataForTime fallback, and two paths to a forward rain scale.
---!load: src/Logger.lua, src/WeatherGuard.lua
+--!load: src/Logger.lua, src/WeatherGuard.lua, src/weather/DroughtScanner.lua
 
 local DAY_MS = 24 * 60 * 60 * 1000
 local NOON   = 12 * 60 * 60 * 1000
@@ -575,6 +575,7 @@ do
   for d = 0, 11 do
     wg:getForecastRain(d)
     wg:getForecastTemperature(d)
+    wg:getEffectiveRain(d)
   end
   wg:getForecastHorizonDays()
   wg:getContext()
@@ -585,20 +586,52 @@ do
   T.eq("fence: no getter wrote anything into the engine state", snapshot(env), before)
 end
 
--- The forbidden surface: the later features must stay ABSENT so a consumer falls
--- back instead of trusting a stub (delivery discipline 1).
+-- The published surface (WG-4 drought outlook is now built).
 do
   local wg = newGuard()
-  T.isNil("surface: getClimate is deliberately absent until WG-2", wg.getClimate)
-  T.isNil("surface: getEffectiveRain is deliberately absent", wg.getEffectiveRain)
-  T.isNil("surface: getDroughtOutlook is deliberately absent", wg.getDroughtOutlook)
-  T.isNil("surface: isDrySpell is deliberately absent", wg.isDrySpell)
 
-  -- And the published five are all really here.
-  for _, name in ipairs({ "getCurrentSky", "getForecastRain", "getForecastTemperature",
-                          "getWeatherMode", "getContext" }) do
+  -- The nine published functions are all really here.
+  for _, name in ipairs({ "getClimate", "getCurrentSky", "getDroughtOutlook",
+                          "getEffectiveRain", "getForecastRain",
+                          "getForecastTemperature", "getWeatherMode",
+                          "getContext", "isDrySpell" }) do
     T.eq("surface: " .. name .. " is published", type(wg[name]), "function")
   end
+end
+
+-- WG-4 DROUGHT OUTLOOK: the method is CALLED, not merely counted.
+--
+-- The block above asserts these nine names exist, and that is all it ever did. It
+-- passed for the entire life of a feature that could not run: DroughtScanner was
+-- loaded by a bare relative `source("src/weather/DroughtScanner.lua")` the engine
+-- cannot resolve, guarded by a `source = source or function() end` stub that kept the
+-- offline suite quiet, and the constructor was called as `DroughtScanner(self)` on a
+-- plain table with no __call. Three faults stacked, in a feature with a green test.
+--
+-- Existence is not behaviour. These call it.
+do
+  T.eq("the DroughtScanner module is actually loaded", type(DroughtScanner), "table")
+  T.eq("and it constructs with .new, not by calling the table",
+       type(DroughtScanner.new), "function")
+
+  local wg = newGuard()
+
+  -- Neutral when absent: no mission, no environment, so the scan must REFUSE with a
+  -- shaped answer rather than raise or invent a dry spell.
+  clearWorld()
+  local outlook = wg:getDroughtOutlook()
+  T.eq("getDroughtOutlook returns a table with no world at all", type(outlook), "table")
+  T.eq("and reports no dry spell rather than guessing one", outlook.isDrySpell, false)
+  T.eq("with zero severity", outlook.severity, 0)
+  T.eq("and zero dry days", outlook.dryDays, 0)
+
+  T.eq("isDrySpell rides it and answers false", wg:isDrySpell(), false)
+
+  -- The scanner is built once and reused, not rebuilt per call.
+  local first = wg._droughtScanner
+  wg:getDroughtOutlook()
+  T.ok("the scanner instance is cached", wg._droughtScanner == first)
+  T.ok("and it is a real instance, not the class table", first ~= DroughtScanner)
 end
 
 -- ══════════════════════════════════════════════════════════
@@ -617,4 +650,336 @@ do
   T.eq("lifecycle: onMissionLoaded survives with no mission at all",
        pcall(wg.onMissionLoaded, wg), true)
   T.eq("lifecycle: save is a no-op with no mission", pcall(wg.save, wg), true)
+end
+
+-- ══════════════════════════════════════════════════════════
+-- L. getClimate (WG-2 Grounded Climate)
+-- ══════════════════════════════════════════════════════════
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+
+  T.ok("climate: getClimate is published", type(wg.getClimate) == "function")
+
+  -- Normal bias (default) — the mode is MODE_NORMAL and not restored.
+  local r = wg:getClimate(1)
+  T.ok("climate: returns a table for season 1", type(r) == "table")
+  T.near("climate: spring rainDayFraction (Normal)", r.rainDayFraction, 0.40)
+  T.near("climate: spring intensity (Normal)", r.intensity, 0.55)
+  T.eq("climate: spring meanTemp", r.meanTemp, 12)
+  T.eq("climate: biasDefaulted=true when mode is default Normal", r.biasDefaulted, true)
+
+  local r2 = wg:getClimate(2)
+  T.near("climate: summer rainDayFraction (Normal)", r2.rainDayFraction, 0.20)
+  T.eq("climate: summer meanTemp", r2.meanTemp, 22)
+
+  local r3 = wg:getClimate(3)
+  T.near("climate: autumn rainDayFraction (Normal)", r3.rainDayFraction, 0.38)
+  T.eq("climate: autumn meanTemp", r3.meanTemp, 10)
+
+  local r4 = wg:getClimate(4)
+  T.near("climate: winter rainDayFraction (Normal)", r4.rainDayFraction, 0.32)
+  T.eq("climate: winter meanTemp", r4.meanTemp, 2)
+end
+
+-- Arid bias (explicitly set, not defaulted).
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  wg:_applyWeatherMode(WeatherGuard.MODE_ARID)
+
+  local r = wg:getClimate(1)
+  T.near("climate: spring rainDayFraction (Arid)", r.rainDayFraction, 0.20)
+  T.near("climate: spring intensity (Arid)", r.intensity, 0.40)
+  T.eq("climate: biasDefaulted=false when Arid was chosen", r.biasDefaulted, false)
+end
+
+-- Wet bias.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  wg:_applyWeatherMode(WeatherGuard.MODE_WET)
+
+  local r = wg:getClimate(1)
+  T.near("climate: spring rainDayFraction (Wet)", r.rainDayFraction, 0.65)
+  T.near("climate: spring intensity (Wet)", r.intensity, 0.80)
+  T.eq("climate: biasDefaulted=false when Wet was chosen", r.biasDefaulted, false)
+end
+
+-- Normal bias explicitly chosen (not defaulted).
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  wg:_applyWeatherMode(WeatherGuard.MODE_NORMAL)
+  wg.modeRestored = true
+
+  local r = wg:getClimate(1)
+  T.near("climate: Normal still returns correct data when explicitly chosen", r.rainDayFraction, 0.40)
+  T.eq("climate: biasDefaulted=false when mode was explicitly restored", r.biasDefaulted, false)
+end
+
+-- MODE_REAL (1) defaults to Normal and flags it.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  wg:_applyWeatherMode(WeatherGuard.MODE_REAL)
+
+  local r = wg:getClimate(1)
+  T.near("climate: MODE_REAL defaults to Normal rainDayFraction", r.rainDayFraction, 0.40)
+  T.eq("climate: MODE_REAL flags biasDefaulted=true", r.biasDefaulted, true)
+end
+
+-- Nil / out-of-range season safety.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+
+  T.isNil("climate: nil season returns nil", wg:getClimate(nil))
+  T.isNil("climate: season 0 returns nil", wg:getClimate(0))
+  T.isNil("climate: season 5 returns nil", wg:getClimate(5))
+  T.isNil("climate: string season returns nil", wg:getClimate("spring"))
+  T.isNil("climate: no argument returns nil", wg:getClimate())
+end
+
+-- Determinism: same season + same bias always returns the same numbers.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  wg:_applyWeatherMode(WeatherGuard.MODE_ARID)
+
+  local a = wg:getClimate(2)
+  local b = wg:getClimate(2)
+  T.eq("climate: deterministic (same season + bias = same result)", a.rainDayFraction == b.rainDayFraction
+       and a.intensity == b.intensity and a.meanTemp == b.meanTemp and a.biasDefaulted == b.biasDefaulted, true)
+end
+
+-- Read-only fence: getClimate must not write anything into the engine.
+do
+  clearWorld()
+  local env = newWorld()
+
+  local function snapshot(t, depth, seen)
+    depth, seen = depth or 0, seen or {}
+    if type(t) ~= "table" or depth > 6 or seen[t] then return tostring(t) end
+    seen[t] = true
+    local keys = {}
+    for k in pairs(t) do table.insert(keys, k) end
+    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+    local parts = {}
+    for _, k in ipairs(keys) do
+      table.insert(parts, tostring(k) .. "=" .. snapshot(t[k], depth + 1, seen))
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+  end
+
+  local before = snapshot(env)
+  local wg = newGuard()
+  wg:getClimate(1)
+  wg:getClimate(2)
+  wg:getClimate(3)
+  wg:getClimate(4)
+  T.eq("climate: no getter wrote anything into the engine state", snapshot(env), before)
+end
+
+-- ══════════════════════════════════════════════════════════
+-- M. getEffectiveRain (WG-3 Both-Face Resolution)
+-- ══════════════════════════════════════════════════════════
+
+-- Returns a table with all 4 fields.
+do
+  clearWorld()
+  newWorld()
+  local r = newGuard():getEffectiveRain(1)
+  T.ok("wg3: returns a table", type(r) == "table")
+  T.ok("wg3: has rainScale", type(r.rainScale) == "number")
+  T.ok("wg3: has isRaining", type(r.isRaining) == "boolean")
+  T.ok("wg3: has source", type(r.source) == "string")
+  T.ok("wg3: has rainWasFilled", type(r.rainWasFilled) == "boolean")
+end
+
+-- rainScale is always a number (never nil).
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  for d = -1, 12 do
+    local r = wg:getEffectiveRain(d)
+    T.ok("wg3: rainScale is a number for daysAhead=" .. d, type(r.rainScale) == "number")
+  end
+end
+
+-- isRaining matches rainScale > MIN_RAIN_THRESHOLD.
+do
+  clearWorld()
+  -- Custom items with objectIndex mapping to known rain scales.
+  local items = {
+    { startDay = 100, startDayTime = 0, duration = 86400000, season = 1, objectIndex = 1 },
+    { startDay = 101, startDayTime = 0, duration = 86400000, season = 1, objectIndex = 2 },
+  }
+  newWorld({ items = items })
+  local wg = newGuard()
+  local r0 = wg:getEffectiveRain(0)  -- objectIndex 1 -> 0.1, NOT > 0.1
+  T.eq("wg3: day 0 (0.1) isRaining matches threshold", r0.isRaining, r0.rainScale > 0.1)
+  local r1 = wg:getEffectiveRain(1)  -- objectIndex 2 -> 0.2, > 0.1
+  T.eq("wg3: day 1 (0.2) isRaining matches threshold", r1.isRaining, r1.rainScale > 0.1)
+end
+
+-- Mode 1 opt-out: climate fill never engages.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  wg:_applyWeatherMode(WeatherGuard.MODE_REAL)
+
+  -- Past horizon: mode 1 returns dry-real.
+  local rPast = wg:getEffectiveRain(10)
+  T.eq("wg3: mode=1 past horizon source=real", rPast.source, "real")
+  T.eq("wg3: mode=1 past horizon rainWasFilled=false", rPast.rainWasFilled, false)
+  T.near("wg3: mode=1 past horizon rainScale=0", rPast.rainScale, 0)
+
+  -- In horizon, dry forecast: mode 1 returns real, never fills.
+  local rDry = wg:getEffectiveRain(0)
+  T.eq("wg3: mode=1 dry horizon source=real", rDry.source, "real")
+  T.eq("wg3: mode=1 dry horizon rainWasFilled=false", rDry.rainWasFilled, false)
+
+  -- In horizon, wet forecast (> 0.1): mode 1 returns real with scale.
+  local rWet = wg:getEffectiveRain(1)
+  T.eq("wg3: mode=1 wet horizon source=real", rWet.source, "real")
+  T.near("wg3: mode=1 wet horizon rainScale=0.2", rWet.rainScale, 0.2)
+end
+
+-- Source label: real rain present (forecast > 0.1).
+do
+  clearWorld()
+  newWorld()
+  local r = newGuard():getEffectiveRain(1)
+  T.eq("wg3: real rain present source=real", r.source, "real")
+  T.eq("wg3: real rain present rainWasFilled=false", r.rainWasFilled, false)
+end
+
+-- Source label: no fill when daysPerPeriod >= 15 (w = 0).
+do
+  clearWorld()
+  local env = newWorld()
+  env.daysPerPeriod = 15
+  local r = newGuard():getEffectiveRain(0)
+  T.eq("wg3: long month (dpm=15) source=real", r.source, "real")
+  T.eq("wg3: long month (dpm=15) rainWasFilled=false", r.rainWasFilled, false)
+end
+
+-- Source label: past-horizon climate fill (no forecast, step 5).
+do
+  clearWorld()
+  local env = newWorld({ dropForecastItems = true, dropForecast = true })
+  local wg = newGuard()
+  -- In Normal mode, spring: rainDayFraction = 0.40, intensity = 0.55.
+  -- Compute the seeded roll to know which sub-path the fill takes.
+  local function seededRoll(day)
+    local s = math.sin(day * 12.9898 + 78.233) * 43758.5453
+    return s - math.floor(s)
+  end
+  local targetDay = (env.currentMonotonicDay or 0) + 0
+  local roll = seededRoll(targetDay)
+  local prob = 0.40
+
+  local r = wg:getEffectiveRain(0)
+  if roll < prob then
+    T.eq("wg3: past-horizon fill wet source=climate", r.source, "climate")
+    T.near("wg3: past-horizon fill wet rainScale", r.rainScale, 0.55)
+    T.eq("wg3: past-horizon fill wet rainWasFilled=true", r.rainWasFilled, true)
+    T.eq("wg3: past-horizon fill wet isRaining=true", r.isRaining, true)
+  else
+    T.eq("wg3: past-horizon fill dry source=real", r.source, "real")
+    T.near("wg3: past-horizon fill dry rainScale", r.rainScale, 0)
+    T.eq("wg3: past-horizon fill dry rainWasFilled=false", r.rainWasFilled, false)
+    T.eq("wg3: past-horizon fill dry isRaining=false", r.isRaining, false)
+  end
+end
+
+-- Source label: short-month blend (in-horizon dry, step 4 fill wet).
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  local env = g_currentMission.environment
+  -- Day 0: forecastRain = 0.1 (dry), triggers step 4 (short-month fill).
+  local function seededRoll(day)
+    local s = math.sin(day * 12.9898 + 78.233) * 43758.5453
+    return s - math.floor(s)
+  end
+  local targetDay = (env.currentMonotonicDay or 0) + 0
+  local roll = seededRoll(targetDay)
+  local dpm = env.daysPerPeriod or 1
+  local w = math.max(0, math.min(1, (15 - dpm) / 14)) ^ 2.5
+  local prob = 0.40 * w  -- Normal, spring
+
+  local r = wg:getEffectiveRain(0)
+  if roll < prob then
+    T.eq("wg3: short-month fill wet source=blend", r.source, "blend")
+    T.near("wg3: short-month fill wet rainScale", r.rainScale, 0.55)
+    T.eq("wg3: short-month fill wet rainWasFilled=true", r.rainWasFilled, true)
+  else
+    T.eq("wg3: short-month fill dry source=real", r.source, "real")
+    T.near("wg3: short-month fill dry rainScale", r.rainScale, 0)
+    T.eq("wg3: short-month fill dry rainWasFilled=false", r.rainWasFilled, false)
+  end
+end
+
+-- Nil-safety: no args, nil args, non-number args.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  local r1 = wg:getEffectiveRain()
+  T.ok("wg3: no args returns a table", type(r1) == "table")
+  T.ok("wg3: no args rainScale is a number", type(r1.rainScale) == "number")
+
+  local r2 = wg:getEffectiveRain(nil)
+  T.ok("wg3: nil arg returns a table", type(r2) == "table")
+  T.ok("wg3: nil arg rainScale is a number", type(r2.rainScale) == "number")
+
+  local r3 = wg:getEffectiveRain("string")
+  T.ok("wg3: string arg returns a table", type(r3) == "table")
+  T.ok("wg3: string arg rainScale is a number", type(r3.rainScale) == "number")
+end
+
+-- Determinism: same daysAhead always returns the same struct.
+do
+  clearWorld()
+  newWorld()
+  local wg = newGuard()
+  local a = wg:getEffectiveRain(2)
+  local b = wg:getEffectiveRain(2)
+  T.eq("wg3: deterministic rainScale", a.rainScale == b.rainScale, true)
+  T.eq("wg3: deterministic isRaining", a.isRaining == b.isRaining, true)
+  T.eq("wg3: deterministic source", a.source == b.source, true)
+  T.eq("wg3: deterministic rainWasFilled", a.rainWasFilled == b.rainWasFilled, true)
+end
+
+-- Neutral-when-absent: no environment returns dry-real.
+do
+  clearWorld()
+  local wg = newGuard()
+  local r = wg:getEffectiveRain(0)
+  T.ok("wg3: absent env returns a table", type(r) == "table")
+  T.near("wg3: absent env rainScale=0", r.rainScale, 0)
+  T.eq("wg3: absent env source=real", r.source, "real")
+  T.eq("wg3: absent env rainWasFilled=false", r.rainWasFilled, false)
+end
+
+-- No season on env returns dry-real.
+do
+  clearWorld()
+  g_currentMission = { environment = { weather = {} }, getIsServer = function() return true end }
+  local r = newGuard():getEffectiveRain(0)
+  T.ok("wg3: no season returns a table", type(r) == "table")
+  T.near("wg3: no season rainScale=0", r.rainScale, 0)
+  T.eq("wg3: no season source=real", r.source, "real")
 end

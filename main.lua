@@ -22,6 +22,11 @@ local modDirectory = g_currentModDirectory
 
 source(modDirectory .. "src/Logger.lua")
 source(modDirectory .. "src/WeatherGuard.lua")
+-- WG-4. Sourced HERE, with the mod directory, rather than from a modDesc
+-- extraSourceFiles entry or a bare relative source() inside WeatherGuard.lua. Both of
+-- those were tried and neither worked, which is why the drought outlook has been dead
+-- since it shipped. Every other module in this mod loads this way and always has.
+source(modDirectory .. "src/weather/DroughtScanner.lua")
 
 -- Create the instance and publish the handle immediately (before any mission
 -- hook), so an early companion read is never missed.

@@ -34,6 +34,13 @@
 --      as humidityDefaulted.
 -- =========================================================
 
+-- DroughtScanner is sourced by main.lua with g_currentModDirectory, like every other
+-- module in this mod. It used to be pulled in from here with a BARE RELATIVE PATH,
+-- `source("src/weather/DroughtScanner.lua")`, which the engine cannot resolve: that is
+-- the `Can't load resource` line this mod has been printing on every load. The
+-- `source = source or function() end` guard above it was a test accommodation that had
+-- leaked into shipping code, and it is what stopped the offline suite noticing.
+
 WeatherGuard = {}
 local WeatherGuard_mt = Class(WeatherGuard)
 
@@ -56,6 +63,29 @@ WeatherGuard.MODE_MIN     = 1
 WeatherGuard.MODE_MAX     = 4
 WeatherGuard.MODE_DEFAULT = WeatherGuard.MODE_NORMAL
 
+-- Climate bias tables (WG-2 Grounded Climate)
+-- PROB is per-season rain-day fraction [spring, summer, autumn, winter]
+-- INTENSITY is the filled-day rain scale (fixed across seasons)
+-- ARID = 2, NORMAL = 3, WET = 4 — maps 1:1 to the weather-mode dial
+WeatherGuard.CLIMATE = {
+    [WeatherGuard.MODE_ARID] = {
+        PROB      = { 0.20, 0.10, 0.18, 0.16 },
+        INTENSITY = 0.40,
+    },
+    [WeatherGuard.MODE_NORMAL] = {
+        PROB      = { 0.40, 0.20, 0.38, 0.32 },
+        INTENSITY = 0.55,
+    },
+    [WeatherGuard.MODE_WET] = {
+        PROB      = { 0.65, 0.35, 0.62, 0.55 },
+        INTENSITY = 0.80,
+    },
+}
+
+-- Season mean temperature (season-only, not bias-varying):
+-- spring 12, summer 22, autumn 10, winter 2 (degrees C)
+WeatherGuard.SEASON_TEMP = { 12, 22, 10, 2 }
+
 -- The native forecast horizon, confirmed twice from opposite directions:
 --   source      - RW's fill loop is `lastItem.startDay < currentMonotonicDay + 9`
 --                 (RealisticWeather Weather.lua:344)
@@ -64,6 +94,9 @@ WeatherGuard.MODE_DEFAULT = WeatherGuard.MODE_NORMAL
 -- RealisticWeather does NOT deepen the horizon; this is what the base game fills.
 -- Used only as the fallback when the live array cannot be measured.
 WeatherGuard.NATIVE_FORECAST_HORIZON_DAYS = 9
+
+-- The isRaining threshold, matching SoilConstants.RAIN.MIN_RAIN_THRESHOLD (0.1).
+WeatherGuard.MIN_RAIN_THRESHOLD = 0.1
 
 function WeatherGuard.new()
     local self = setmetatable({}, WeatherGuard_mt)
@@ -284,6 +317,165 @@ function WeatherGuard:getContext()
         forecastHorizonMeasured = measured ~= nil,
         rwEnriching             = self:isRealisticWeatherActive(),
     }
+end
+
+--- Get grounded climate data — the always-on climatic floor.
+--- The same season + bias always returns the same struct (pure, state-free lookup;
+--- multiplayer-safe and catch-up-safe by construction).
+---@param season number 1-4 (spring=1, summer=2, autumn=3, winter=4)
+---@return table|nil { rainDayFraction, intensity, meanTemp, biasDefaulted }
+--- nil when season is nil or out of range
+function WeatherGuard:getClimate(season)
+    if type(season) ~= "number" then
+        return nil
+    end
+    local s = math.floor(season)
+    if s < 1 or s > 4 then
+        return nil
+    end
+
+    local mode = self.weatherMode
+    local climate = WeatherGuard.CLIMATE[mode]
+    if climate == nil then
+        -- MODE_REAL (1) or any unknown mode: default to Normal
+        climate = WeatherGuard.CLIMATE[WeatherGuard.MODE_NORMAL]
+        return {
+            rainDayFraction = climate.PROB[s],
+            intensity       = climate.INTENSITY,
+            meanTemp        = WeatherGuard.SEASON_TEMP[s],
+            biasDefaulted   = true,
+        }
+    end
+
+    return {
+        rainDayFraction = climate.PROB[s],
+        intensity       = climate.INTENSITY,
+        meanTemp        = WeatherGuard.SEASON_TEMP[s],
+        biasDefaulted   = mode == WeatherGuard.MODE_NORMAL and not self.modeRestored,
+    }
+end
+
+--- Drought/dry-stretch outlook.
+---@return table { isDrySpell, severity, dryDays, source }
+function WeatherGuard:getDroughtOutlook()
+    if self._droughtScanner == nil then
+        -- DroughtScanner.new, NOT DroughtScanner(). The class is a plain table with no
+        -- __call metamethod, so calling it raises "attempt to call a table value". This
+        -- was never caught because the only test on this method asserted that it
+        -- EXISTS and never invoked it, and because the module it needs was failing to
+        -- load anyway, so the call site was unreachable in game.
+        if DroughtScanner == nil then
+            WGLogger.warning("getDroughtOutlook: DroughtScanner module is not loaded; no outlook available")
+            return nil
+        end
+        self._droughtScanner = DroughtScanner.new(self)
+    end
+    return self._droughtScanner:scan()
+end
+
+--- Convenience wrapper.
+---@return boolean
+function WeatherGuard:isDrySpell()
+    local o = self:getDroughtOutlook()
+    return o ~= nil and o.isDrySpell == true
+end
+
+-- =========================================================
+-- Local helpers for getEffectiveRain
+-- =========================================================
+
+local function clamp(v, min, max)
+    return math.max(min, math.min(max, v))
+end
+
+local function seededRoll(day)
+    local s = math.sin(day * 12.9898 + 78.233) * 43758.5453
+    return s - math.floor(s)
+end
+
+-- =========================================================
+-- WG-3 both-face resolution (getEffectiveRain)
+-- =========================================================
+
+--- Both-face resolution: real forecast leads, climate fills gaps.
+---@param daysAhead number  0 = now. Fractional days floor to whole days.
+---@return table { rainScale, isRaining, source, rainWasFilled }
+function WeatherGuard:getEffectiveRain(daysAhead)
+    daysAhead = math.max(0, math.floor(tonumber(daysAhead) or 0))
+
+    local env = self:_env()
+    if env == nil then
+        return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false }
+    end
+
+    local targetDay = (env.currentMonotonicDay or 0) + daysAhead
+
+    -- Step 2: mode-1 opt-out (checked early)
+    if self:getWeatherMode() == WeatherGuard.MODE_REAL then
+        local forecastRain = self:getForecastRain(daysAhead)
+        if forecastRain ~= nil then
+            return { rainScale = forecastRain, isRaining = forecastRain > WeatherGuard.MIN_RAIN_THRESHOLD,
+                     source = "real", rainWasFilled = false }
+        end
+        return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false }
+    end
+
+    -- Step 3: real-forecast path
+    local forecastRain = self:getForecastRain(daysAhead)
+
+    if forecastRain ~= nil and forecastRain > WeatherGuard.MIN_RAIN_THRESHOLD then
+        return { rainScale = forecastRain, isRaining = true, source = "real", rainWasFilled = false }
+    end
+
+    -- Past horizon: full climate fill (step 5)
+    if forecastRain == nil then
+        return self:_effectiveRainPastHorizon(targetDay)
+    end
+
+    -- Dry day inside horizon: short-month fill (step 4)
+    return self:_effectiveRainShortMonth(targetDay)
+end
+
+function WeatherGuard:_effectiveRainPastHorizon(targetDay)
+    local env = self:_env()
+    if env == nil then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local season = env.currentSeason
+    if season == nil then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local climate = self:getClimate(season)
+    if climate == nil then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local prob = climate.rainDayFraction
+    local roll = seededRoll(targetDay)
+    if roll < prob then
+        return { rainScale = climate.intensity, isRaining = true, source = "climate", rainWasFilled = true }
+    end
+    return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false }
+end
+
+function WeatherGuard:_effectiveRainShortMonth(targetDay)
+    local env = self:_env()
+    if env == nil then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local season = env.currentSeason
+    if season == nil then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local dpm = env.daysPerPeriod or 1
+    local w = clamp((15 - dpm) / 14, 0, 1) ^ 2.5
+    if w <= 0 then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local climate = self:getClimate(season)
+    if climate == nil then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local prob = climate.rainDayFraction * w
+    if prob <= 0 then return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false } end
+
+    local roll = seededRoll(targetDay)
+    if roll < prob then
+        return { rainScale = climate.intensity, isRaining = true, source = "blend", rainWasFilled = true }
+    end
+    return { rainScale = 0, isRaining = false, source = "real", rainWasFilled = false }
 end
 
 -- =========================================================
