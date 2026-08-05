@@ -1,2 +1,5 @@
 FS25_WeatherGuard.zip
 tools/test/node_modules/
+
+# Pre-commit gate deps (tools/test/ - installed by npm, never shipped)
+node_modules/
