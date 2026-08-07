@@ -991,3 +991,45 @@ function WeatherGuard:consoleCommandStatus()
 
     return table.concat(lines, "\n")
 end
+
+-- =========================================================
+-- Console command (wgSetMode)
+-- =========================================================
+
+--- Standalone weather-mode setter for when SettingsHub is absent. The mode dial
+--- has no other player-facing surface without the hub, so a headless admin can
+--- set it from the server console. Same server-authoritative path the hub's
+--- action reaches (requestWeatherMode), never a bypass. Accepts a mode name
+--- (real/arid/normal/wet) or its index; anything else prints usage and changes
+--- nothing.
+function WeatherGuard:consoleCommandSetMode(arg)
+    if g_currentMission == nil then
+        return "Weather Guard: mission not ready - cannot set the weather mode"
+    end
+
+    local mode = nil
+    if arg ~= nil then
+        local trimmed = tostring(arg):lower():match("^%s*(.-)%s*$")
+        if trimmed == "real" then
+            mode = WeatherGuard.MODE_REAL
+        elseif trimmed == "arid" then
+            mode = WeatherGuard.MODE_ARID
+        elseif trimmed == "normal" then
+            mode = WeatherGuard.MODE_NORMAL
+        elseif trimmed == "wet" then
+            mode = WeatherGuard.MODE_WET
+        elseif trimmed:match("^%d+$") then
+            mode = tonumber(trimmed)
+        end
+    end
+
+    if mode == nil or mode < WeatherGuard.MODE_MIN or mode > WeatherGuard.MODE_MAX then
+        return "Usage: wgSetMode <real|arid|normal|wet> or <1-4>. Weather mode unchanged."
+    end
+
+    local ok = self:requestWeatherMode(mode)
+    if ok then
+        return string.format("Weather mode -> %d (%s)", self.weatherMode, self:getWeatherModeName())
+    end
+    return "Weather Guard: could not set the weather mode (server authority refused or unavailable)"
+end
