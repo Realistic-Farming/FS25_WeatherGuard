@@ -36,7 +36,7 @@ end
 -- Compares (day, time) as a pair for the same reason the source does: fengari's
 -- integers wrap at 32 bits, so an absolute day*86,400,000 scalar silently
 -- overflows here even though FS25's Lua 5.1 (doubles only) would not.
-local function buildForecast(items)
+local function buildForecast(items, sentinelDay)
   return {
     dataForTime = function(_self, day, dayTime)
       for _, it in ipairs(items) do
@@ -56,12 +56,22 @@ local function buildForecast(items)
       if hour > 9 * 24 then return nil end
       return { temperature = 15 + hour * 0.5 }
     end,
+    getDailyForecast = function(_self, daysFromToday)
+      -- Mirror the engine: an uncovered day returns -math.huge / math.huge
+      -- sentinels in a normal-looking table (WeatherForecast.lua:67-131), not
+      -- a nil. The getter must reject them before computing.
+      if daysFromToday > 9 or sentinelDay then
+        return { day = TODAY + daysFromToday, highTemperature = -math.huge, lowTemperature = math.huge }
+      end
+      return { day = TODAY + daysFromToday, highTemperature = 25, lowTemperature = 15 }
+    end,
   }
 end
 
 ---@param o table  opt-outs: dropRainFallScale, dropIsRaining, dropCloud, dropTemp,
----                dropHumidity, dropForecastItems, dropForecast, dropVariationRain,
----                dropWeatherObjects, dropWeatherTypeAtTime
+---                dropMinMax, dropTimeSinceRain, dropForecastItems, dropForecast,
+---                dropVariationRain, dropWeatherObjects, dropWeatherTypeAtTime;
+---                overrides: minMax = {lo, hi}, timeSinceRain = minutes, season = n
 local function newWorld(o)
   o = o or {}
   local items = o.items or buildItems(9)
@@ -79,11 +89,20 @@ local function newWorld(o)
 
   local weather = {}
   if not o.dropForecastItems then weather.forecastItems = items end
-  if not o.dropForecast      then weather.forecast      = buildForecast(items) end
+  if not o.dropForecast      then weather.forecast      = buildForecast(items, o.sentinelDay) end
   if not o.dropTemp then
     weather.temperatureUpdater = {
       getTemperatureAtTime = function(_self, t) return 18 + (t / DAY_MS) end,
     }
+  end
+  if not o.dropMinMax then
+    weather.getCurrentMinMaxTemperatures = function()
+      local mm = o.minMax or { 10, 20 }
+      return mm[1], mm[2]
+    end
+  end
+  if not o.dropTimeSinceRain then
+    weather.getTimeSinceLastRain = function() return o.timeSinceRain or 0 end
   end
   if o.weatherCloud then
     weather.cloudUpdater = { getCloudCoverage = function() return 0.31 end }
@@ -111,13 +130,10 @@ local function newWorld(o)
     weather             = weather,
     currentMonotonicDay = TODAY,
     dayTime             = NOON,
-    currentSeason       = 1,
+    currentSeason       = o.season or 1,
   }
   if not o.dropCloud then
     env.cloudUpdater = { getCloudCoverage = function() return 0.62 end }
-  end
-  if not o.dropHumidity then
-    env.weatherSystem = { relativeHumidity = 0.72 }
   end
 
   g_currentMission = {
@@ -184,8 +200,9 @@ do
   T.eq("sky: isRaining from getIsRaining", sky.isRaining, true)
   T.near("sky: cloudCoverage from environment.cloudUpdater", sky.cloudCoverage, 0.62)
   T.near("sky: temperature from weather.temperatureUpdater", sky.temperature, 18.5)
-  T.near("sky: humidity from weatherSystem.relativeHumidity", sky.humidity, 0.72)
-  T.eq("sky: humidity is not flagged as defaulted", sky.humidityDefaulted, false)
+  T.near("sky: temperature from weather.temperatureUpdater", sky.temperature, 18.5)
+  T.near("sky: humidity is 0.98 flat while precipitating (the rain gate)", sky.humidity, 0.98)
+  T.eq("sky: a live rain-gate humidity is not flagged as defaulted", sky.humidityDefaulted, false)
   -- Today is item 1 -> objectIndex 1 -> odd -> SUN.
   T.eq("sky: weatherType is the lowercase category name", sky.weatherType, "sun")
   T.eq("sky: weatherTypeId is the raw WeatherType enum", sky.weatherTypeId, WeatherType.SUN)
@@ -238,12 +255,86 @@ do
           newGuard():getCurrentSky().temperature)
 end
 
+-- WG-12 closed-form humidity. With the rain gate off and min=max=T_current the
+-- model collapses to the blend itself, so the assertions are clean numbers:
+--   t=0         -> e = eWet  -> humidity = HUMIDITY_WET          (0.98)
+--   t->inf      -> e = eDry  -> humidity = spring baseline        (0.70)
+--   t=tau*ln2   -> e midpoint -> humidity = (0.70 + 0.98)/2      (0.84)
 do
   clearWorld()
-  newWorld({ dropHumidity = true })
+  newWorld({ dropIsRaining = true, dropRainFallScale = true,
+             minMax = { 18.5, 18.5 }, timeSinceRain = 0 })
   local sky = newGuard():getCurrentSky()
-  T.near("no-default: humidity falls to the ruled 0.5 floor", sky.humidity, 0.5)
-  T.eq("no-default: and the 0.5 floor is FLAGGED, not silent", sky.humidityDefaulted, true)
+  T.near("humidity: just rained, still saturated at the wet end", sky.humidity, 0.98)
+  T.eq("humidity: a live closed-form value is not flagged", sky.humidityDefaulted, false)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true,
+             minMax = { 18.5, 18.5 }, timeSinceRain = 1e9 })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity: long dry, decays to the spring dry baseline", sky.humidity, 0.70)
+  T.eq("humidity: the dry-end baseline is still a live value", sky.humidityDefaulted, false)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true,
+             minMax = { 18.5, 18.5 }, timeSinceRain = 480 * math.log(2) })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity: at the tau midpoint the blend is half-way", sky.humidity, 0.84)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true,
+             minMax = { 18.5, 18.5 }, timeSinceRain = 1e9, season = 2 })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity: summer dry baseline decays to 0.55", sky.humidity, 0.55)
+  T.eq("humidity: season 2 uses the summer dry end", sky.humidityDefaulted, false)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true,
+             minMax = { 18.5, 18.5 }, timeSinceRain = 1e9, season = 3 })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity: autumn dry baseline decays to 0.75", sky.humidity, 0.75)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true, dropTimeSinceRain = true })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity-defaulted: a nil rain clock falls to the ruled 0.5 floor", sky.humidity, 0.5)
+  T.eq("humidity-defaulted: the nil-rain-clock floor IS flagged", sky.humidityDefaulted, true)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true, dropMinMax = true })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity-defaulted: a nil day mean falls to the ruled 0.5 floor", sky.humidity, 0.5)
+  T.eq("humidity-defaulted: the nil-mean floor IS flagged", sky.humidityDefaulted, true)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true, dropTemp = true })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity-defaulted: a nil current temperature falls to the ruled 0.5 floor",
+         sky.humidity, 0.5)
+  T.eq("humidity-defaulted: the nil-temperature floor IS flagged", sky.humidityDefaulted, true)
+end
+
+do
+  clearWorld()
+  newWorld({ dropIsRaining = true, dropRainFallScale = true, season = 0 })
+  local sky = newGuard():getCurrentSky()
+  T.near("humidity-defaulted: an unreadable season falls to the ruled 0.5 floor",
+         sky.humidity, 0.5)
+  T.eq("humidity-defaulted: the unreadable-season floor IS flagged", sky.humidityDefaulted, true)
 end
 
 do
@@ -338,6 +429,50 @@ do
   clearWorld()
   newWorld({ dropForecast = true })
   T.isNil("temp: nil when weather.forecast is absent", newGuard():getForecastTemperature(1))
+end
+
+-- ══════════════════════════════════════════════════════════
+-- E2. Forward humidity (WG-12): the day's MINIMUM, the drying window
+-- ══════════════════════════════════════════════════════════
+-- The mock getDailyForecast returns high=25, low=15, so T_mean = 20. With the
+-- rain clock at 0 the blend sits at the wet end: humidity = 0.98 * esat(20) /
+-- esat(25). The engine's own formula is the reference, computed in-test so the
+-- assertion locks the model rather than a stale constant.
+do
+  clearWorld()
+  newWorld({ timeSinceRain = 0 })
+  local wg = newGuard()
+  local function esat(T) return 6.1078 * math.exp(17.27 * T / (237.3 + T)) end
+  local want = 0.98 * esat(20) / esat(25)
+  T.near("fhum: day 0 is the forecast day's drying window", wg:getForecastHumidity(0), want)
+  T.near("fhum: day 3 uses the same forecast day's window", wg:getForecastHumidity(3), want)
+  T.isNil("fhum: past the filled horizon returns nil (the honest edge)",
+          wg:getForecastHumidity(10))
+  T.isNil("fhum: far past the horizon returns nil", wg:getForecastHumidity(400))
+  T.isNil("fhum: a negative daysAhead returns nil", wg:getForecastHumidity(-1))
+end
+
+do
+  clearWorld()
+  newWorld({ sentinelDay = true })
+  local wg = newGuard()
+  T.isNil("fhum: a sentinel (uncovered) forecast day is rejected, never math.huge",
+          wg:getForecastHumidity(2))
+end
+
+do
+  clearWorld()
+  newWorld({ dropForecast = true })
+  T.isNil("fhum: nil when weather.forecast is absent", newGuard():getForecastHumidity(1))
+end
+
+do
+  clearWorld()
+  newWorld({ timeSinceRain = 1e9 })
+  local wg = newGuard()
+  local function esat(T) return 6.1078 * math.exp(17.27 * T / (237.3 + T)) end
+  local want = 0.70 * esat(20) / esat(25)
+  T.near("fhum: long dry, the window is the spring dry end", wg:getForecastHumidity(2), want)
 end
 
 -- ══════════════════════════════════════════════════════════
@@ -575,6 +710,7 @@ do
   for d = 0, 11 do
     wg:getForecastRain(d)
     wg:getForecastTemperature(d)
+    wg:getForecastHumidity(d)
     wg:getEffectiveRain(d)
   end
   wg:getForecastHorizonDays()
@@ -590,11 +726,11 @@ end
 do
   local wg = newGuard()
 
-  -- The nine published functions are all really here.
+  -- The published functions are all really here.
   for _, name in ipairs({ "getClimate", "getCurrentSky", "getDroughtOutlook",
                           "getEffectiveRain", "getForecastRain",
-                          "getForecastTemperature", "getWeatherMode",
-                          "getContext", "isDrySpell" }) do
+                          "getForecastTemperature", "getForecastHumidity",
+                          "getWeatherMode", "getContext", "isDrySpell" }) do
     T.eq("surface: " .. name .. " is published", type(wg[name]), "function")
   end
 end
