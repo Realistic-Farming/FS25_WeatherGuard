@@ -43,13 +43,12 @@ end
 | `wg:getCurrentSky()` | `{ rainScale, isRaining, cloudCoverage, temperature, humidity, humidityDefaulted, weatherType, weatherTypeId }`, or `nil` when there is no environment |
 | `wg:getForecastRain(daysAhead)` | forward rain intensity sampled at the current time of day, `nil` past the filled horizon |
 | `wg:getForecastTemperature(daysAhead)` | forward temperature, `nil` past the filled horizon |
+| `wg:getForecastHumidity(daysAhead)` | the day's MINIMUM humidity (the drying window), a bare number or `nil` past the filled horizon |
 | `wg:getWeatherMode()` | the dial: `1` Real weather only, `2` Arid, `3` Normal (default), `4` Wet |
 | `wg:getContext()` | `{ currentSky, mode, modeName, forecastHorizonDays, forecastHorizonMeasured, rwEnriching }` |
 | `wg:getForecastHorizonDays()` | how many days are actually filled right now, `nil` when unmeasurable |
 | `wg:isRealisticWeatherActive()` | whether RealisticWeather is running |
 | `wg:requestWeatherMode(mode)` | ask the server to change the dial (admin-gated) |
-
-**Deliberately absent** until their own feature ships, so a consumer falls back rather than trusting a stub: `getClimate(season)`, `getEffectiveRain(daysAhead)`, `getDroughtOutlook()` / `isDrySpell()`.
 
 ### Two rules the surface keeps
 

@@ -25,9 +25,7 @@
 --
 -- DELIVERY DISCIPLINE (two Time Guard scars):
 --   1. Publish the REAL surface. Nothing is advertised here that is not built
---      and certified. getClimate / getEffectiveRain / getDroughtOutlook are
---      deliberately ABSENT until their own feature ships, so a consumer falls
---      back rather than trusting a stub.
+--      and certified.
 --   2. NO SILENT DEFAULT on a load-bearing value. An unreadable field returns
 --      nil and warns once; it never quietly reads as "dry" or "calm". The one
 --      ruled exception is humidity's 0.5 floor, which is flagged in the return
@@ -85,6 +83,24 @@ WeatherGuard.CLIMATE = {
 -- Season mean temperature (season-only, not bias-varying):
 -- spring 12, summer 22, autumn 10, winter 2 (degrees C)
 WeatherGuard.SEASON_TEMP = { 12, 22, 10, 2 }
+
+-- Humidity closed form (WG-12). The engine produces no humidity anywhere
+-- (certified by absence at two roots), so this mod owns the model.
+-- TAU is the drying clock constant in minutes; WET is the saturated value
+-- while precipitating; FLOOR is the ruled 0.5 default. BASELINE is the
+-- per-season dry-end vapour-pressure fraction [spring, summer, autumn,
+-- winter]. These are the SHIP numbers, not placeholders; they later ride the
+-- difficulty spine (AWAITING THE SPINE, dial route named in the SDS).
+WeatherGuard.HUMIDITY_TAU       = 480
+WeatherGuard.HUMIDITY_WET       = 0.98
+WeatherGuard.HUMIDITY_FLOOR     = 0.5
+WeatherGuard.HUMIDITY_BASELINE  = { 0.70, 0.55, 0.75, 0.80 }
+
+-- esat(T): saturation vapour pressure, the exponential Magnus form that is the
+-- closed form's core (SDS v1.3 5b, verbatim).
+local function esat(T)
+    return 6.1078 * math.exp(17.27 * T / (237.3 + T))
+end
 
 -- The native forecast horizon, confirmed twice from opposite directions:
 --   source      - RW's fill loop is `lastItem.startDay < currentMonotonicDay + 9`
@@ -296,6 +312,79 @@ function WeatherGuard:getForecastTemperature(daysAhead)
         return nil
     end
     return hourly.temperature
+end
+
+--- Forward humidity, the day's MINIMUM: the drying window.
+--- Evaluates the same closed form as the current read, but with the forecast
+--- day's OWN temperatures from WeatherForecast:getDailyForecast (endpoints at
+--- that day's (high+low)/2, denominator at that day's highTemperature, where
+--- humidity is lowest). Returns a BARE NUMBER or NIL, never a sentinel: nil for
+--- daysAhead < 0, nil past the measured horizon, nil on an unreadable read.
+--- There is no defaulted companion on this getter; nil IS the absent signal.
+---@param daysAhead number  0 = today.
+---@return number|nil  humidity, or nil past the filled horizon (the honest edge)
+function WeatherGuard:getForecastHumidity(daysAhead)
+    local env     = self:_env()
+    local weather = self:_weather()
+    if env == nil or weather == nil then
+        return nil
+    end
+    daysAhead = tonumber(daysAhead) or 0
+    if daysAhead < 0 then
+        return nil
+    end
+
+    local horizon = self:getForecastHorizonDays()
+    if horizon ~= nil and daysAhead > horizon then
+        return nil
+    end
+
+    local forecast = weather.forecast
+    if forecast == nil or type(forecast.getDailyForecast) ~= "function" then
+        return nil
+    end
+
+    local ok, daily = pcall(forecast.getDailyForecast, forecast, daysAhead)
+    if not ok or type(daily) ~= "table" then
+        return nil
+    end
+
+    -- An uncovered day returns -math.huge / math.huge sentinels in a
+    -- normal-looking table (certified, WeatherForecast.lua:67-131). Never pass
+    -- them through unguarded.
+    local high = daily.highTemperature
+    local low  = daily.lowTemperature
+    if type(high) ~= "number" or type(low) ~= "number" then
+        return nil
+    end
+    if high == math.huge or high == -math.huge or low == math.huge or low == -math.huge then
+        return nil
+    end
+
+    local baseline = WeatherGuard.HUMIDITY_BASELINE[env.currentSeason]
+    if baseline == nil then
+        return nil
+    end
+
+    local tMean    = (high + low) * 0.5
+    local esatMean = esat(tMean)
+    local eWet     = WeatherGuard.HUMIDITY_WET * esatMean
+    local eDry     = baseline * esatMean
+
+    -- The blend still rides the engine's rain clock (the same closed form); an
+    -- unreadable clock is the honest nil, never a silent dry read.
+    local minutesSinceRain = tryCall(weather, "getTimeSinceLastRain")
+    if type(minutesSinceRain) ~= "number" then
+        return nil
+    end
+    local e    = eDry + (eWet - eDry) * math.exp(-minutesSinceRain / WeatherGuard.HUMIDITY_TAU)
+
+    -- Humidity falls as temperature rises, so the day's minimum (the drying
+    -- window) sits at the day's high temperature.
+    local humidity = e / esat(high)
+    if humidity < 0 then humidity = 0 end
+    if humidity > 1 then humidity = 1 end
+    return humidity
 end
 
 --- The active weather-mode dial.
@@ -573,45 +662,82 @@ function WeatherGuard:_currentTemperature()
     return v
 end
 
---- Centralizes the multi-field humidity probe SeasonalCropStress carries today
---- (WeatherIntegration.lua:197-235) so every consumer stops re-deriving it.
+--- The closed-form humidity model (WG-12). Nothing in FS25 produces humidity
+--- (certified by absence at two roots), so every probe fell through to the ruled
+--- 0.5 default since the mod shipped, and SoilFertilizer's hay-drying ceiling
+--- was collapsing a two-dimensional table to one row. This replaces the old
+--- multi-source probe (RealisticWeather-first) with a stateless closed form on
+--- the engine's own rain clock:
+---   esat(T) = 6.1078 * exp(17.27 * T / (237.3 + T))
+---   eWet = 0.98 * esat(T_mean),  eDry = baseline(season) * esat(T_mean)
+---   e    = eDry + (eWet - eDry) * exp(-t / tau),  t = minutes since last rain
+---   humidity = clamp(e / esat(T_current), 0, 1)
+--- While precipitating the air is saturated, 0.98 flat. humidityDefaulted goes
+--- true exactly when the form cannot evaluate (nil rain clock, nil temperature,
+--- unreadable season); it is no longer permanently true.
 ---@return number humidity, boolean defaulted
 function WeatherGuard:_humidity()
-    -- RealisticWeather's own reading first, when it is running.
-    if self:isRealisticWeatherActive() then
-        local rw = getfenv(0)["g_realisticWeather"] or getfenv(0)["g_weatherSystem"]
-        if rw ~= nil then
-            local v = tryCall(rw, "getHumidity")
-            if v == nil then v = rw.humidity end
-            if v == nil then v = rw.relativeHumidity end
-            if type(v) == "number" then
-                return v, false
-            end
-        end
+    local env     = self:_env()
+    local weather = self:_weather()
+    if env == nil or weather == nil then
+        return WeatherGuard.HUMIDITY_FLOOR, true
     end
 
-    local env = self:_env()
-    if env ~= nil then
-        local ws = env.weatherSystem
-        if ws ~= nil then
-            local v = tryCall(ws, "getHumidity")
-            if v == nil then v = ws.relativeHumidity end
-            if v == nil then v = ws.humidity end
-            if type(v) == "number" then
-                return v, false
-            end
-        end
-        local weather = env.weather
-        if weather ~= nil and type(weather.relativeHumidity) == "number" then
-            return weather.relativeHumidity, false
+    -- The rain gate: while precipitating the air is saturated, 0.98 flat.
+    local isRaining = tryCall(weather, "getIsRaining")
+    if isRaining == nil then
+        local rainScale = tryCall(weather, "getRainFallScale")
+        if type(rainScale) == "number" then
+            isRaining = rainScale > 0
         end
     end
+    if isRaining then
+        return WeatherGuard.HUMIDITY_WET, false
+    end
 
-    -- The one RULED default in the contract. Flagged rather than silent, so a
-    -- consumer can tell "half humid" from "we could not read it".
-    WGLogger.warnOnce("humidity",
-        "getCurrentSky: no humidity source readable; reporting the ruled 0.5 floor with humidityDefaulted=true")
-    return 0.5, true
+    -- Season baseline: spring 0.70, summer 0.55, autumn 0.75, winter 0.80.
+    local baseline = WeatherGuard.HUMIDITY_BASELINE[env.currentSeason]
+    if baseline == nil then
+        WGLogger.warnOnce("humidity",
+            "getCurrentSky: unreadable season; reporting the ruled 0.5 floor with humidityDefaulted=true")
+        return WeatherGuard.HUMIDITY_FLOOR, true
+    end
+
+    -- Day's MEAN temperature: the midpoint of the current-day rolling pair. It
+    -- can never answer a forecast day, which is why the forecast getter reads
+    -- the forecast object instead.
+    local tMin, tMax = tryCall(weather, "getCurrentMinMaxTemperatures")
+    if type(tMin) ~= "number" or type(tMax) ~= "number" then
+        WGLogger.warnOnce("humidity",
+            "getCurrentSky: unreadable day mean temperature; reporting the ruled 0.5 floor with humidityDefaulted=true")
+        return WeatherGuard.HUMIDITY_FLOOR, true
+    end
+    local tMean = (tMin + tMax) * 0.5
+
+    -- The engine's own rain clock, in minutes.
+    local minutesSinceRain = tryCall(weather, "getTimeSinceLastRain")
+    if type(minutesSinceRain) ~= "number" then
+        WGLogger.warnOnce("humidity",
+            "getCurrentSky: unreadable rain clock; reporting the ruled 0.5 floor with humidityDefaulted=true")
+        return WeatherGuard.HUMIDITY_FLOOR, true
+    end
+
+    -- Current temperature for the saturation denominator.
+    local tCurrent = self:_currentTemperature()
+    if type(tCurrent) ~= "number" then
+        WGLogger.warnOnce("humidity",
+            "getCurrentSky: unreadable current temperature; reporting the ruled 0.5 floor with humidityDefaulted=true")
+        return WeatherGuard.HUMIDITY_FLOOR, true
+    end
+
+    local esatMean     = esat(tMean)
+    local eWet         = WeatherGuard.HUMIDITY_WET * esatMean
+    local eDry         = baseline * esatMean
+    local e            = eDry + (eWet - eDry) * math.exp(-minutesSinceRain / WeatherGuard.HUMIDITY_TAU)
+    local humidity     = e / esat(tCurrent)
+    if humidity < 0 then humidity = 0 end
+    if humidity > 1 then humidity = 1 end
+    return humidity, false
 end
 
 --- Order two calendar points. Deliberately compares (day, time) as a PAIR rather
@@ -990,4 +1116,46 @@ function WeatherGuard:consoleCommandStatus()
     table.insert(lines, "  forecast temp: " .. table.concat(temp, " "))
 
     return table.concat(lines, "\n")
+end
+
+-- =========================================================
+-- Console command (wgSetMode)
+-- =========================================================
+
+--- Standalone weather-mode setter for when SettingsHub is absent. The mode dial
+--- has no other player-facing surface without the hub, so a headless admin can
+--- set it from the server console. Same server-authoritative path the hub's
+--- action reaches (requestWeatherMode), never a bypass. Accepts a mode name
+--- (real/arid/normal/wet) or its index; anything else prints usage and changes
+--- nothing.
+function WeatherGuard:consoleCommandSetMode(arg)
+    if g_currentMission == nil then
+        return "Weather Guard: mission not ready - cannot set the weather mode"
+    end
+
+    local mode = nil
+    if arg ~= nil then
+        local trimmed = tostring(arg):lower():match("^%s*(.-)%s*$")
+        if trimmed == "real" then
+            mode = WeatherGuard.MODE_REAL
+        elseif trimmed == "arid" then
+            mode = WeatherGuard.MODE_ARID
+        elseif trimmed == "normal" then
+            mode = WeatherGuard.MODE_NORMAL
+        elseif trimmed == "wet" then
+            mode = WeatherGuard.MODE_WET
+        elseif trimmed:match("^%d+$") then
+            mode = tonumber(trimmed)
+        end
+    end
+
+    if mode == nil or mode < WeatherGuard.MODE_MIN or mode > WeatherGuard.MODE_MAX then
+        return "Usage: wgSetMode <real|arid|normal|wet> or <1-4>. Weather mode unchanged."
+    end
+
+    local ok = self:requestWeatherMode(mode)
+    if ok then
+        return string.format("Weather mode -> %d (%s)", self.weatherMode, self:getWeatherModeName())
+    end
+    return "Weather Guard: could not set the weather mode (server authority refused or unavailable)"
 end

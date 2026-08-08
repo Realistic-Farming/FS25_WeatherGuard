@@ -100,4 +100,6 @@ FSBaseMission.delete = Utils.prependedFunction(FSBaseMission.delete, onMissionDe
 if addConsoleCommand ~= nil then
     addConsoleCommand("wgStatus", "Show Weather Guard mode, the live sky, and the forecast reads",
         "consoleCommandStatus", weatherGuard)
+    addConsoleCommand("wgSetMode", "Set the weather mode (real|arid|normal|wet or 1-4) without SettingsHub",
+        "consoleCommandSetMode", weatherGuard)
 end
