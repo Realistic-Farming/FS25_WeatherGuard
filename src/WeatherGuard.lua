@@ -32,14 +32,14 @@
 --      as humidityDefaulted.
 -- =========================================================
 
--- DroughtScanner is sourced by main.lua with g_currentModDirectory, like every other
+-- DroughtScanner is sourced by main.lua with (WeatherGuardModDirectory or g_currentModDirectory), like every other
 -- module in this mod. It used to be pulled in from here with a BARE RELATIVE PATH,
 -- `source("src/weather/DroughtScanner.lua")`, which the engine cannot resolve: that is
 -- the `Can't load resource` line this mod has been printing on every load. The
 -- `source = source or function() end` guard above it was a test accommodation that had
 -- leaked into shipping code, and it is what stopped the offline suite noticing.
 
-WeatherGuard = {}
+WeatherGuard = WeatherGuard or {}
 local WeatherGuard_mt = Class(WeatherGuard)
 
 local DAY_MS = 24 * 60 * 60 * 1000   -- 86,400,000 ms (RW Weather.lua:122 uses the literal)

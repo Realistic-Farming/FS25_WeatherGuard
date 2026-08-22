@@ -5,7 +5,7 @@
 -- WG-3 getEffectiveRain) to compute a drought outlook.
 -- =========================================================
 
-DroughtScanner = {}
+DroughtScanner = DroughtScanner or {}
 local DroughtScanner_mt = Class(DroughtScanner)
 
 local function clamp(v, min, max)

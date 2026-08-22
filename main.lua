@@ -18,7 +18,14 @@
 -- during their own module load, before the mission exists.
 -- =========================================================
 
-local modDirectory = g_currentModDirectory
+-- Hot-reload latch (FuelCosts reference): g_currentModDirectory and
+-- g_currentModName are nil on a live re-source, so they are latched into
+-- module globals on first load, with a g_modsDirectory loose-folder fallback.
+WeatherGuardModDirectory = WeatherGuardModDirectory
+    or g_currentModDirectory
+    or (g_modsDirectory ~= nil and (g_modsDirectory .. "FS25_WeatherGuard/") or nil)
+WeatherGuardModName = WeatherGuardModName or g_currentModName or "FS25_WeatherGuard"
+local modDirectory = WeatherGuardModDirectory
 
 source(modDirectory .. "src/Logger.lua")
 source(modDirectory .. "src/WeatherGuard.lua")
