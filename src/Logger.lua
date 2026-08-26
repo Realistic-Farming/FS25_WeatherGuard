@@ -8,7 +8,7 @@
 -- are greppable by the "[WeatherGuard]" tag.
 -- =========================================================
 
-WGLogger = {}
+WGLogger = WGLogger or {}
 WGLogger.PREFIX = "[WeatherGuard] "
 WGLogger.debugEnabled = false
 
