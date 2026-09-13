@@ -76,10 +76,13 @@ Positions 2/3/4 mean the **real sky leads** and a grounded climate fills only th
 - **MasterHUD** not required (no overlay of its own).
 - **Time Guard** not required. A future per-day forecast cache may ride `subscribeTick("day")` as a read-only subscriber.
 
-## Console command
+## Console commands
 
 ```
-wgStatus    Show the mode, the live sky, the measured horizon, and 5 days of forecast reads
+wgStatus                 Show the mode, the live sky, the measured horizon, and 5 days of forecast reads
+wgSetMode <mode>         Set the weather mode: real | arid | normal | wet, or 1-4. Admin only on a
+                         server (routed through NetworkSync when present); an invalid argument prints
+                         usage and changes nothing. Confirm the new mode with wgStatus.
 ```
 
 ## Where the engine facts come from
