@@ -32,7 +32,7 @@ MUTATIONS = [
     "                    self:_applyWeatherMode(args.mode, \"admin request\")\n", 1)],
   "the handler looks for a key the wire cannot carry"),
  ("C1-console-claims-applied-on-a-client", WG,
-  [("        if g_currentMission ~= nil and not g_currentMission:getIsServer() then\n            return string.format(\"Weather mode %d requested; the server applies it and every client follows\", mode)\n        end\n",
+  [("        if g_currentMission ~= nil and not g_currentMission:getIsServer() then\n            return string.format(\"Weather mode %d requested; the server applies it if you are an admin, and every client follows\", mode)\n        end\n",
     "", 1)],
   "a pure client's console prints the old mode as if applied"),
 ]

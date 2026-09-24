@@ -1162,9 +1162,10 @@ function WeatherGuard:consoleCommandSetMode(arg)
     local ok = self:requestWeatherMode(mode)
     if ok then
         -- On a pure client the request was sent, not applied: the dial here still reads
-        -- the old mode until the server's state arrives, so say what happened.
+        -- the old mode until the server's state arrives, and NetworkSync's admin gate
+        -- decides on the server, so say exactly that.
         if g_currentMission ~= nil and not g_currentMission:getIsServer() then
-            return string.format("Weather mode %d requested; the server applies it and every client follows", mode)
+            return string.format("Weather mode %d requested; the server applies it if you are an admin, and every client follows", mode)
         end
         return string.format("Weather mode -> %d (%s)", self.weatherMode, self:getWeatherModeName())
     end

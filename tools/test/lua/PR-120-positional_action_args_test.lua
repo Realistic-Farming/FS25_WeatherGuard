@@ -136,7 +136,7 @@ group("C", function()
     local out, dial = nil, nil
     asClient(function(wgC) out = wgC:consoleCommandSetMode("2") dial = wgC:getWeatherMode() end)
     T.eq("C1 on a pure client the console says the mode was requested, not applied, and the local dial still reads the old mode",
-        tostring(out) .. "/" .. tostring(dial) .. "/" .. #W.sent, "Weather mode 2 requested; the server applies it and every client follows/3/1")
+        tostring(out) .. "/" .. tostring(dial) .. "/" .. #W.sent, "Weather mode 2 requested; the server applies it if you are an admin, and every client follows/3/1")
     out = wg:consoleCommandSetMode("2")
     T.eq("C2 on the host the console applies and says so", tostring(out):sub(1, 17) .. "/" .. wg:getWeatherMode(), "Weather mode -> 2/2")
 end)
