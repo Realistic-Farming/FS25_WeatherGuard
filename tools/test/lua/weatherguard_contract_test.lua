@@ -564,11 +564,11 @@ do
   T.eq("mode: and it is admin-gated", sent.spec.adminOnly, true)
 
   T.eq("mode: a client request is forwarded to the server", wg:requestWeatherMode(2), true)
-  T.eq("mode: the forwarded action carries the mode", sent.requested.args.mode, 2)
+  T.eq("mode: the forwarded action carries the mode as a positional array (what the transport writes)", sent.requested.args[1], 2)
   T.eq("mode: the client did NOT apply it locally", wg:getWeatherMode(), 3)
 
   -- The server side of the same action does apply it.
-  sent.spec.onAction(nil, { mode = 2 })
+  sent.spec.onAction(nil, { 2 })
   T.eq("mode: the server action handler applies the mode", wg:getWeatherMode(), 2)
 end
 
