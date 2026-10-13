@@ -932,7 +932,12 @@ end
 function WeatherGuard:requestWeatherMode(mode)
     local ns = self:_getNetworkSync()
     if ns ~= nil then
-        return ns:requestAction(WeatherGuard.ACTION_MODE, { mode = mode })
+        -- A POSITIONAL ARRAY: NetworkSync's action event writes args[1..#args]
+        -- (RealisticFarmingSyncEvent.lua:209-216), so a keyed table has length zero and
+        -- arrives empty; an admin on a dedicated server or a pure client could never
+        -- change the mode (PLAYER-REPORTS rows 120 and 199). A host never sees it:
+        -- requestAction applies in memory there.
+        return ns:requestAction(WeatherGuard.ACTION_MODE, { mode })
     end
     -- No NetworkSync: single player, or a server with no sync layer.
     if g_currentMission == nil or g_currentMission:getIsServer() then
@@ -995,8 +1000,9 @@ function WeatherGuard:_bindBedrock()
         ns:registerAction(WeatherGuard.ACTION_MODE, {
             adminOnly = true,
             onAction  = function(_, args)
+                -- The mode is args[1], the sender's positional array (see requestWeatherMode).
                 if type(args) == "table" then
-                    self:_applyWeatherMode(args.mode, "admin request")
+                    self:_applyWeatherMode(args[1], "admin request")
                 end
             end,
         })
@@ -1155,6 +1161,12 @@ function WeatherGuard:consoleCommandSetMode(arg)
 
     local ok = self:requestWeatherMode(mode)
     if ok then
+        -- On a pure client the request was sent, not applied: the dial here still reads
+        -- the old mode until the server's state arrives, and NetworkSync's admin gate
+        -- decides on the server, so say exactly that.
+        if g_currentMission ~= nil and not g_currentMission:getIsServer() then
+            return string.format("Weather mode %d requested; the server applies it if you are an admin, and every client follows", mode)
+        end
         return string.format("Weather mode -> %d (%s)", self.weatherMode, self:getWeatherModeName())
     end
     return "Weather Guard: could not set the weather mode (server authority refused or unavailable)"
